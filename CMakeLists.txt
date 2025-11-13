@@ -6,4 +6,5 @@ set(CMAKE_CXX_STANDARD 20)
 add_executable(Playground main.cpp
         stream_client.h
         shared_mem_ipc.h
-        ByteQueue.h)
+        ByteQueue.h
+        UnionFind.h)

@@ -1,62 +1,74 @@
 //
 // Created by ByteDance on 11/9/25.
 //
-#include <chrono> // For std::chrono::duration
-#include <thread> // For std::this_thread::sleep_for
 
 #ifndef PLAYGROUND_STREAM_CLIENT_H
 #define PLAYGROUND_STREAM_CLIENT_H
 
+#include <chrono> // For std::chrono::duration
+#include <thread> // For std::this_thread::sleep_for
+#include <atomic>
+
+
 class StreamClient {
-private:
-    std::unordered_map<std::string, std::vector<int>> m_;
-    std::unordered_map<std::string, int> idx_;
-    std::unordered_map<std::string, int> ready_idx_;
-    std::vector<std::string> stream_ids;
-    std::unordered_map<std::string, std::thread> asyncs_;
+public:
+    std::atomic<int> idx_; // 0
+    std::atomic<int> ready_idx_; // -1
+    std::atomic<int> pq_idx_; // -1
+    std::string stream_id_ ;
+    std::thread async_;
+    std::vector<int> v_;
+    std::atomic<int> running_;
 
 public:
-    explicit StreamClient(const std::vector<std::vector<int>>& vv) {
-        for (int i = 0; i < vv.size(); ++i) {
-            std::string s_id = std::to_string(i);
-            m_[s_id] = vv[i];
-            idx_[s_id] = 0;
-            ready_idx_[s_id] = 0;
-            stream_ids.emplace_back(s_id);
-        }
+    StreamClient(const std::string& s_id, const std::vector<int>& v): idx_(0), ready_idx_(-1), pq_idx_(-1), stream_id_(s_id), v_(v) {
     }
 
-    void Request(const std::string& stream_id) {
+    StreamClient(std::string&& s_id, const std::vector<int>& v): idx_(0), ready_idx_(-1), pq_idx_(-1), stream_id_(s_id), v_(v) {
+    }
+
+
+    void Request() {
         // all data requested
-        if (ready_idx_[stream_id] == m_[stream_id].size()) {
+        if (!HasNext()) {
             return;
         }
 
         // read data asynchronously
         auto fetch = [&]() {
             std::this_thread::sleep_for(std::chrono::seconds(1));
-            ready_idx_[stream_id] += 1;
+            ++ready_idx_;
         };
-        asyncs_[stream_id] = std::thread(fetch);
+        async_ = std::thread(fetch);
+        running_ = 1;
     }
 
 
-    bool AllReady() const {
-        return std::all_of(stream_ids.cbegin(), stream_ids.end() + 1, [&](const std::string& id) {
-            return ready_idx_.at(id) >= idx_.at(id);
-        });
-    }
-
-    int Next(const std::string& stream_id) {
-        if (ready_idx_[stream_id] < idx_[stream_id]) {
-            asyncs_[stream_id].join();
+    int Next() {
+        if (running_ == 1) {
+            async_.join();
+            running_ = 0;
         }
-        // check ready_idx_ must be >= idx_
-        return m_[stream_id][idx_[stream_id]++];
+
+        return v_[idx_++];;
     }
 
-    int HasNext(const std::string& stream_id) {
-        return idx_[stream_id] < m_[stream_id].size();
+    bool ValInPq() const {
+        return pq_idx_ < ready_idx_;
+    }
+
+    void IncrementPq() {
+        ++pq_idx_;
+    }
+
+    bool Ready() const {
+        bool res = ready_idx_ >= idx_;
+        // printf("stream id [%s] ready is [%d], [%d]/[%d], \n", stream_id_.c_str(), res, static_cast<int>(ready_idx_), static_cast<int>(idx_));
+        return ready_idx_ >= idx_;
+    }
+
+    bool HasNext() const {
+        return idx_ < v_.size();
     }
 };
 
