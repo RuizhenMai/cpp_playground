@@ -7,4 +7,5 @@ add_executable(Playground main.cpp
         stream_client.h
         shared_mem_ipc.h
         ByteQueue.h
-        UnionFind.h)
+        UnionFind.h
+        k_means.h)
